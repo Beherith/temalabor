@@ -9,13 +9,15 @@
 #include <ESP8266mDNS.h>
 #include <ArduinoOTA.h>
 #include <FS.h>
+#include <DNSServer.h>
+#include <WebSocketsServer.h>
 
 
 #define BME_SCK 13
 #define BME_MISO 12
 #define BME_MOSI 11
 #define BME_CS 10
-#define BME280_ADDRESS (0x77)
+
 
 #define SEALEVELPRESSURE_HPA (1013.25)
 
@@ -23,39 +25,25 @@ Adafruit_BME280 bme;
 
 ESP8266WebServer server;
 uint8_t pin_led = 2;
-char* ssid = "G6_2109";
-char* password = "titkosjelszo";
+char* ssid = "imola21";
+char* password = "ingyenwifi";
 bool ota_flag = true;
 uint16_t time_elapsed = 0;
 char* host = "esp8266";
 unsigned long delayTime;
+const char* ssid2 = "Esp8266";
+const char* password2 = "pw";
+const IPAddress ip(192, 168, 0, 1);
+const IPAddress mask(255,255,255,0);
+long mytime=0;
+bool led=true;
 
-char webpage[] PROGMEM = R"=====(
-<html>
-<head>
-</head>
-<body>
-<p> LED Status: <span id="led-state">__</span> </p>
-<button onclick="myFunction()"> TOGGLE </button>
-</body>
-<script>
-function myFunction()
-{
-  console.log("button was clicked!");
-  var xhr = new XMLHttpRequest();
-  var url = "/ledstate";
-  xhr.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 200) {
-      document.getElementById("led-state").innerHTML = this.responseText;
-    }
-  };
-  xhr.open("GET", url, true);
-  xhr.send();
-};
-document.addEventListener('DOMContentLoaded', myFunction, false);
-</script>
-</html>
-)=====";
+DNSServer dns;
+WebSocketsServer ws(81);
+WebSocketsServer sensorws(82);
+TwoWire twi;
+
+
 
 void setup()
 {
@@ -65,18 +53,52 @@ void setup()
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid,password);
   Serial.begin(115200);
+  initWS();
+  mytime  = millis();
   while(WiFi.status()!=WL_CONNECTED)
   {
     Serial.print(".");
     delay(500);
+     if (millis() - mytime > 5000) {
+          WiFi.disconnect();
+          WiFi.mode(WIFI_AP);
+          WiFi.softAPConfig(ip, ip, mask);
+          WiFi.softAP(ssid2, password2);
+          dns.setErrorReplyCode(DNSReplyCode::NoError);
+          dns.start(53, "*",  ip);
+          server.on("/", HTTP_GET, []{
+            File f = SPIFFS.open("/cp.html", "r");
+            server.streamFile(f, "text/html");
+            f.close();
+          });
+
+          server.on("/", HTTP_POST, []{
+            File f = SPIFFS.open("/cppost.txt", "w");
+            f.println(server.arg("SSID"));
+            f.println(server.arg("PW"));
+            f.close();
+
+            server.send(200, "text/plain", "rst esp8266");
+          });
+        server.begin();
+        while(true)
+        {
+          dns.processNextRequest();
+          server.handleClient();
+        }
+     }
   }
+
+
   Serial.println("");
   Serial.print("IP Address: ");
   Serial.println(WiFi.localIP());
 
-  bool status;
 
-  status = bme.begin();  
+  bool status;
+  twi = TwoWire();
+  twi.begin(D3,D4);
+  status = bme.begin(0x76, &twi);  
     if (!status) {
         Serial.println("Could not find a valid BME280 sensor, check wiring!");
         while (1);
@@ -125,7 +147,7 @@ void setup()
   });
   ArduinoOTA.begin();
 
-  //sdfghj
+  
   server.on("/",serveIndexFile);
   server.on("/ledstate",getLEDState);
   server.onNotFound(handleNotFound); 
@@ -146,14 +168,14 @@ void loop()
     }
     ota_flag = false;
   }
+  ws.loop();
 }
 
 void serveIndexFile()
 {
-  File file = SPIFFS.open("/index.html","r");
-  server.streamFile(file, "text/html");
-  //Serial.println(file.size());
-  file.close();
+  File f = SPIFFS.open("/index.html","r");
+  server.streamFile(f, "text/html");
+  f.close();
 }
 
 void toggleLED()
@@ -176,23 +198,69 @@ void getLEDState()
  
 }
 
+
 void printValues() {
-    Serial.print("Temperature = ");
-    Serial.print(bme.readTemperature());
-    Serial.println(" *C");
+  File file = SPIFFS.open("/datas.txt", "w");
+  if (!file) {
+      Serial.println("file open failed");
+  }
+  Serial.println(" Writing... ");
 
-    Serial.print("Pressure = ");
+  for (int i=1; i<=25; i++){
+    file.println(millis());
+    file.println(bme.readTemperature());
+    file.println(bme.readPressure() / 100.0);
+    file.println(bme.readHumidity());
+  }
 
-    Serial.print(bme.readPressure() / 100.0F);
-    Serial.println(" hPa");
+  file.close();
+  Serial.println("datas file done");
+}
 
-    Serial.print("Approx. Altitude = ");
-    Serial.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
-    Serial.println(" m");
 
-    Serial.print("Humidity = ");
-    Serial.print(bme.readHumidity());
-    Serial.println(" %");
+void initWS(){
+  ws.begin();
+  ws.onEvent(wsHandler);
+  sensorws.begin();
+  sensorws.onEvent(sensorWsHandler);
+}
 
-    Serial.println();
+void wsHandler(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght){
+   switch (type) {
+  case WStype_DISCONNECTED:           
+      Serial.printf("[%u] Disconnected!\n", num);
+      break;
+    case WStype_CONNECTED: {             
+        IPAddress ipWS = ws.remoteIP(num);
+        Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ipWS[0], ipWS[1], ipWS[2], ipWS[3], payload);
+      }
+      break;
+    case WStype_TEXT: 
+      Serial.printf("[%u] get Text: %s\n", num, payload);
+      if (payload[0] == 'O') {
+          digitalWrite(pin_led, led);
+          led = !led;
+      }
+      break;
+   }
+}
+
+
+void sensorWsHandler(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght){
+   switch (type) {
+  case WStype_DISCONNECTED:           
+      Serial.printf("[%u] Disconnected!\n", num);
+      break;
+    case WStype_CONNECTED: {             
+        IPAddress ipWS = ws.remoteIP(num);
+        Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ipWS[0], ipWS[1], ipWS[2], ipWS[3], payload);
+        File f=SPIFFS.open("/datas.txt", "r");
+
+        
+        f.close();
+      }
+      break;
+    case WStype_TEXT: 
+      break;
+   }
 }

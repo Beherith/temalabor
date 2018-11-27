@@ -3,22 +3,16 @@
 </head>
 <body>
 <p> LED Status: <span id="led-state">__</span> </p>
-<button onclick="myFunction()"> TOGGLE </button>
+<button onclick="onButtonClick()"> TOGGLE </button>
 </body>
 <script>
-function myFunction()
+  var webcoket;
+function setup()
 {
-  console.log("button was clicked!");
-  var xhr = new XMLHttpRequest();
-  var url = "/ledstate";
-  xhr.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 200) {
-      document.getElementById("led-state").innerHTML = this.responseText;
-    }
-  };
-  xhr.open("GET", url, true);
-  xhr.send();
-};
-document.addEventListener('DOMContentLoaded', myFunction, false);
+  websocket = new WebSocket('ws://' + window.location.hostname + ':81/');
+}
+function onButtonClick(){
+    websocket.send("O");
+}
 </script>
 </html>

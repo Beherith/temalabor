@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+
+<head>
+	<title>BME280</title>
+	<script src="Chart.bundle.js"></script>
+	<script src="utils.js"></script>
+	<style>
+		.myChart{
+			width: 50vw;
+			height: 43vh;
+		}
+	</style>
+</head>
+
+<body chartLoad="startWebsocket()">
+	<div class="myChart">
+		<canvas id="temperature"></canvas>
+	</div>
+	<div class="myChart">
+		<canvas id="pressure"></canvas>
+	</div>
+	<div class="myChart">
+		<canvas id="timestamp"></canvas>
+	</div>
+
+
+	<script>
+		var temperatureData = new Array();
+		var pressureDatas = new Array();
+		var timestampDatas = new Array();
+
+		var temperatureChartData = {
+			datasets: [{
+				label: temperatureDatas,
+				borderColor: window.chartColors.red,
+				data: temperatureDatas
+			}], 
+		};
+
+		var pressureChartData = {
+			datasets: [{
+				label: pressureDatas,
+				borderColor: window.chartColors.blue,
+				data: pressureDatas
+			}], 
+		};
+
+		var timestampChartData = {
+			datasets: [{
+				label: timestampDatas,
+				borderColor: window.chartColors.red,
+				data: timestampDatas
+			}], 
+		};
+
+		
+	</script>
+</body>
+
+<script>
+	var startWebsocket(){
+		var ws = new Websocket('');
+		ws.onopen = function (event);
+		ws.onmessage = function (event){
+			var sensorDatas = event.data.trim().split('\t');
+			pressureDatas.push(sensorDatas[1]);
+			temperatureDatas.push(sensorDatas[2]);
+			timestampDatas.push(sensorDatas[3]);
+
+			pressure.update();
+			temperature.update();
+
+
+		}
+
+
+</script>
+}
+
+</html>
