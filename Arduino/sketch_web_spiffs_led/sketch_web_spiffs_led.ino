@@ -30,7 +30,7 @@ char* password = "ingyenwifi";
 bool ota_flag = true;
 uint16_t time_elapsed = 0;
 char* host = "esp8266";
-unsigned long delayTime;
+unsigned long delayTime = 5000;
 const char* ssid2 = "Esp8266";
 const char* password2 = "pw";
 const IPAddress ip(192, 168, 0, 1);
@@ -45,6 +45,7 @@ char strbufT[16];
 char strbufTrim[64];
 char tempStr[64];
 int i=0;
+int numlines= 0;
 
 DNSServer dns;
 WebSocketsServer ws(81);
@@ -219,10 +220,14 @@ void printValues() {
    // file.print(bme.readTemperature());
     //file.print(bme.readPressure() / 100.0);
     //file.println(bme.readHumidity());
+    float P = bme.readPressure();
+    float T = bme.readTemperature();
+    float H = bme.readHumidity();
 
-    sprintf(strbufP, "P %c%06d.%02d", (P>=0)?'+':'-', (int) (abs(P)),((int) (abs(P)*100))%100);
-    sprintf(strbufT, "T %c%03d.%02d", (T>=0)?'+':'-', (int) (abs(T)),((int) (abs(T)*100))%100);
-    ile.println('%010d\t%s\t%s',millis(), strbufP,strbufT);
+    sprintf(strbufP, "P %c%06d.%02d", (P>=0)?'+':'-', (int) (abs(P)),((int) (abs(P)*100))%100); //12 characters
+    sprintf(strbufT, "T %c%03d.%02d", (T>=0)?'+':'-', (int) (abs(T)),((int) (abs(T)*100))%100); //9 characters
+    sprintf(strbufT, "H %03d.%02d", (int) (abs(T)),((int) (abs(T)*100))%100); //7 characters
+    file.println('%010d\t%s\t%s\t%s\n',millis(), strbufP,strbufT,strbufH); //10+1+11+1+8+1+8+1 == 32 characterrel
   }
 
   file.close();
@@ -257,6 +262,36 @@ void wsHandler(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght){
    }
 }
 
+int get_number_of_lines(String filename){ // by reading the entire file ...
+    File thisfile = SPIFFS.open(filename,'r');
+    uint32_t num_lines =0;
+    String temp_line = "";
+    temp_line.reserve(128);
+    while(thisfile.available()){
+        temp_line = thisfile.readUntil('\n');
+        //thisfile.readUntil('\n');
+        num_lines ++;
+    }
+    // now we know that the temp_line is the last line in the file, thus we can use its 'timestamp' and increment it optionally.
+    return num_lines;
+    
+}
+
+
+int get_number_of_lines_faster(String filename, int size_of_line){
+    File thisfile = SPIFFS.open(filename,'r');
+    uint32_t num_lines =0;
+    uint32_t num_chars = thisfile.size();
+    
+    num_lines = num_chars / size_of_line;
+    
+    if (num_chars % size_of_line == 0){
+        
+    }else{
+        Serial.printf("Warning: data file %s size %d is not divisible by the line size:%d", filename,num_chars,size_of_line)
+    }
+    return num_lines
+}
 
 void sensorWsHandler(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght){
    switch (type) {
