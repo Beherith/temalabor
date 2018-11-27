@@ -37,6 +37,14 @@ const IPAddress ip(192, 168, 0, 1);
 const IPAddress mask(255,255,255,0);
 long mytime=0;
 bool led=true;
+float P;
+float T;
+float M;
+char strbufP[16];
+char strbufT[16];
+char strbufTrim[64];
+char tempStr[64];
+int i=0;
 
 DNSServer dns;
 WebSocketsServer ws(81);
@@ -206,11 +214,15 @@ void printValues() {
   }
   Serial.println(" Writing... ");
 
-  for (int i=1; i<=25; i++){
-    file.println(millis());
-    file.println(bme.readTemperature());
-    file.println(bme.readPressure() / 100.0);
-    file.println(bme.readHumidity());
+  for (i=1; i<=25; i++){
+    //file.print(millis());
+   // file.print(bme.readTemperature());
+    //file.print(bme.readPressure() / 100.0);
+    //file.println(bme.readHumidity());
+
+    sprintf(strbufP, "P %c%06d.%02d", (P>=0)?'+':'-', (int) (abs(P)),((int) (abs(P)*100))%100);
+    sprintf(strbufT, "T %c%03d.%02d", (T>=0)?'+':'-', (int) (abs(T)),((int) (abs(T)*100))%100);
+    ile.println('%010d\t%s\t%s',millis(), strbufP,strbufT);
   }
 
   file.close();
@@ -254,9 +266,17 @@ void sensorWsHandler(uint8_t num, WStype_t type, uint8_t * payload, size_t lengh
     case WStype_CONNECTED: {             
         IPAddress ipWS = ws.remoteIP(num);
         Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ipWS[0], ipWS[1], ipWS[2], ipWS[3], payload);
-        File f=SPIFFS.open("/datas.txt", "r");
-
-        
+        File f=SPIFFS.open("/datas.txt", "a");
+        i=0;
+        while(i != f.size()/sorokmérete){
+          char c = f.read();
+          while (c != '\n'){
+            tempStr[tempStr.length()] = c;
+            c = f.read();
+          }
+          i++;
+         ws.send(tempStr);
+        }
         f.close();
       }
       break;
